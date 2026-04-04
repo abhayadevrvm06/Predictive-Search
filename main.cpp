@@ -2,24 +2,22 @@
 #include <string>
 #include <fstream>
 #include <cstdlib>
-
 using namespace std;
 
-// just a simple struct to group the word and its score together so we can rank them
 struct WordFreq {
     string word = "";
     long long freq = 0;
 };
 
-// making the trie node. instead of doing a full search later i am just caching the 
-// top 3 words right here in the node. saves so much time during the actual search
+// making the trie node. instead of doing a full search later, just caching the top 3 words right here in the node, saves time
+
 struct Node {
     Node* child[26] = {}; 
     WordFreq top3[3]; 
 };
 
 // this function walks down the tree and creates nodes if they dont exist
-// the cool part is it updates the top 3 array at every single step of the way
+// it updates the top 3 array at every single step of the way
 void insert(Node* root, string word, long long freq) {
     Node* curr = root;
     for (char c : word) {
@@ -35,8 +33,8 @@ void insert(Node* root, string word, long long freq) {
         curr = curr->child[i];
         
         // this is basically a manual mini insertion sort
-        // we check the new word against the top 3 array and if its score is higher
-        // we swap them and push the smaller word down the list
+        // check the new word against the top 3 array and if its score is higher
+        // swap them and push the smaller word down the list
         WordFreq temp = {word, freq};
         for (int j = 0; j < 3; j++) {
             if (temp.freq > curr->top3[j].freq) {
@@ -49,7 +47,7 @@ void insert(Node* root, string word, long long freq) {
 }
 
 // standard trie search. just loops through the prefix letters
-// if we hit a dead end we return null otherwise return the node we stopped at
+// if we hit a dead end, return null otherwise return the node we stopped at
 Node* search(Node* root, string prefix) {
     Node* curr = root;
     for (char c : prefix) {
@@ -63,7 +61,6 @@ Node* search(Node* root, string prefix) {
 }
 
 // reads the words from our text file
-// since the file is already sorted i just simulate the frequencies starting from 20000 
 // and going down so the first words read stay at the top of the rankings
 void loadTxt(Node* root, string filename) {
     ifstream file(filename);
@@ -81,9 +78,9 @@ void loadTxt(Node* root, string filename) {
     file.close();
 }
 
-// i figured out this hack to get real time typing without pressing enter
 // it uses system() to quickly turn off canonical mode and echo in the mac terminal
 // grabs exactly one character and then turns them back on immediately
+// similar effect to pressing enter 
 char getKeystroke() {
     char c;
     system("stty -icanon -echo"); 
