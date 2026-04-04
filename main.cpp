@@ -95,7 +95,7 @@ char getKeystroke() {
 int main() {
     Node* root = new Node();
     
-    cout << "loading dataset..." << endl;
+    
     loadTxt(root, "20k.txt");
     
     string prefix = "";
@@ -104,10 +104,6 @@ int main() {
     while (true) {
         // clear the mac terminal screen every time so it looks like a clean ui
         system("clear");
-        
-        cout << "---------------------------------" << endl;
-        cout << "       OptiType Engine           " << endl;
-        cout << "---------------------------------" << endl;
         cout << "(type to search | '-' to backspace | '?' to quit)\n" << endl;
         
         cout << "Search: " << prefix << "\n\n";
@@ -149,6 +145,6 @@ int main() {
     
     // clear screen one last time before exiting so the terminal is clean
     system("clear");
-    cout << "exiting program..." << endl;
+    cout << "Program exited successfully" << endl;
     return 0;
 }
