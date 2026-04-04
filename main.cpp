@@ -1,32 +1,42 @@
 #include <iostream>
 #include <string>
 #include <fstream>
+#include <cstdlib>
 
 using namespace std;
 
-// 1. Simple struct to group a word and its frequency
+// just a simple struct to group the word and its score together so we can rank them
 struct WordFreq {
     string word = "";
     long long freq = 0;
 };
 
-// 2. Shortened Node struct ({} automatically sets pointers to null)
+// making the trie node. instead of doing a full search later i am just caching the 
+// top 3 words right here in the node. saves so much time during the actual search
 struct Node {
     Node* child[26] = {}; 
     WordFreq top3[3]; 
 };
 
-// 3. Insert and update Top 3 instantly
+// this function walks down the tree and creates nodes if they dont exist
+// the cool part is it updates the top 3 array at every single step of the way
 void insert(Node* root, string word, long long freq) {
     Node* curr = root;
     for (char c : word) {
+        // convert the char to an index from 0 to 25
         int i = tolower(c) - 'a';
+        
+        // just ignore anything that isnt a normal alphabet letter
         if (i < 0 || i > 25) continue; 
         
-        if (!curr->child[i]) curr->child[i] = new Node();
+        if (curr->child[i] == nullptr) {
+            curr->child[i] = new Node();
+        }
         curr = curr->child[i];
         
-        // Simple manual swap to keep top3 sorted
+        // this is basically a manual mini insertion sort
+        // we check the new word against the top 3 array and if its score is higher
+        // we swap them and push the smaller word down the list
         WordFreq temp = {word, freq};
         for (int j = 0; j < 3; j++) {
             if (temp.freq > curr->top3[j].freq) {
@@ -38,64 +48,107 @@ void insert(Node* root, string word, long long freq) {
     }
 }
 
-// 4. Quick search that returns the node
+// standard trie search. just loops through the prefix letters
+// if we hit a dead end we return null otherwise return the node we stopped at
 Node* search(Node* root, string prefix) {
     Node* curr = root;
     for (char c : prefix) {
         int i = tolower(c) - 'a';
-        if (i < 0 || i > 25 || !curr->child[i]) return nullptr; 
+        if (i < 0 || i > 25 || curr->child[i] == nullptr) {
+            return nullptr; 
+        }
         curr = curr->child[i];
     }
     return curr;
 }
 
-// 5. Shortened TXT loader for word-only files
+// reads the words from our text file
+// since the file is already sorted i just simulate the frequencies starting from 20000 
+// and going down so the first words read stay at the top of the rankings
 void loadTxt(Node* root, string filename) {
     ifstream file(filename);
-    
     if (!file.is_open()) {
-        cout << "Error: Could not open " << filename << endl;
+        cout << "error: could not open " << filename << endl;
         return;
     }
 
     string word;
-    long long simulatedFreq = 20000; // Start with a high fake frequency
-    
-    // Only extract the word, since there are no numbers in the file!
+    long long simulatedFreq = 20000; 
     while (file >> word) {
         insert(root, word, simulatedFreq);
-        simulatedFreq--; // Decrease it so earlier words stay the most "frequent"
+        simulatedFreq--; 
     }
+    file.close();
 }
 
-// 6. Minimal Main Loop
+// i figured out this hack to get real time typing without pressing enter
+// it uses system() to quickly turn off canonical mode and echo in the mac terminal
+// grabs exactly one character and then turns them back on immediately
+char getKeystroke() {
+    char c;
+    system("stty -icanon -echo"); 
+    c = getchar();                
+    system("stty icanon echo");   
+    return c;
+}
+
 int main() {
     Node* root = new Node();
     
-    // Loading your specific text file
+    cout << "loading dataset..." << endl;
     loadTxt(root, "20k.txt");
     
+    string prefix = "";
     
-    string input;
-    
+    // infinite loop for the real time search bar
     while (true) {
-        cout << "Enter the word (or 'exit'): ";
-        cin >> input;
-        if (input == "exit") break;
+        // clear the mac terminal screen every time so it looks like a clean ui
+        system("clear");
         
-        Node* res = search(root, input);
+        cout << "---------------------------------" << endl;
+        cout << "       OptiType Engine           " << endl;
+        cout << "---------------------------------" << endl;
+        cout << "(type to search | '-' to backspace | '?' to quit)\n" << endl;
         
-        if (!res || res->top3[0].freq == 0) {
-            cout << "-> No suggestions.\n\n";
-            continue;
+        cout << "Search: " << prefix << "\n\n";
+        
+        // we only want to bother searching if the user actually typed something
+        if (prefix.length() > 0) {
+            Node* result = search(root, prefix);
+            
+            // if we got null or the first top3 slot is empty then we have nothing
+            if (result == nullptr || result->top3[0].freq == 0) {
+                cout << "Suggestions:\n  no suggestions found" << endl;
+            } else {
+                cout << "Suggestions:" << endl;
+                // loop through our cached array and print the words
+                for (int i = 0; i < 3; i++) {
+                    if (result->top3[i].freq > 0) {
+                        cout << "  " << i + 1 << ". " << result->top3[i].word << endl;
+                    }
+                }
+            }
         }
         
-        // Only print the words, not the fake frequencies
-        for (int i = 0; i < 3 && res->top3[i].freq > 0; i++) {
-            cout << "-> " << res->top3[i].word << "\n";
+        // wait for the user to hit a key
+        char c = getKeystroke();
+        
+        if (c == '?') {
+            break; 
+        } else if (c == '-' || c == 127) { 
+            // 127 is the ascii code for the mac backspace key
+            // just pop the last letter off our prefix string
+            if (prefix.length() > 0) {
+                prefix.pop_back(); 
+            }
+        } else if (isalpha(c)) {
+            // append the new letter to the prefix
+            prefix += c; 
         }
-        cout << endl;
     }
     
+    // clear screen one last time before exiting so the terminal is clean
+    system("clear");
+    cout << "exiting program..." << endl;
     return 0;
 }
