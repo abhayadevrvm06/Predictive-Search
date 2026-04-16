@@ -3,40 +3,44 @@
 #include <fstream>
 #include <cstdlib>
 
+// For portable raw terminal input:
+// Windows has _getch() built into conio.h which does exactly what we need.
+// On Unix/Mac we use termios.h to manually configure the terminal.
+#ifdef _WIN32
+    #include <conio.h>
+#else
+    #include <termios.h>
+    #include <unistd.h>
+#endif
+
 using namespace std;
 
-// just a simple struct to group the word and its score together so we can rank them
 struct WordFreq {
     string word = "";
     long long freq = 0;
 };
 
-// making the trie node. instead of doing a full search later i am just caching the 
-// top 3 words right here in the node. saves so much time during the actual search
 struct Node {
     Node* child[26] = {}; 
     WordFreq top3[3]; 
+
+    // Recursively deletes all child nodes when this node is destroyed.
+    // This means a single `delete root` frees the entire trie. Memory: managed.
+    ~Node() {
+        for (Node* c : child)
+            delete c; // delete on nullptr is a no-op, so no null check needed
+    }
 };
 
-// this function walks down the tree and creates nodes if they dont exist
-// the cool part is it updates the top 3 array at every single step of the way
 void insert(Node* root, string word, long long freq) {
     Node* curr = root;
     for (char c : word) {
-        // convert the char to an index from 0 to 25
         int i = tolower(c) - 'a';
-        
-        // just ignore anything that isnt a normal alphabet letter
         if (i < 0 || i > 25) continue; 
-        
         if (curr->child[i] == nullptr) {
             curr->child[i] = new Node();
         }
         curr = curr->child[i];
-        
-        // this is basically a manual mini insertion sort
-        // we check the new word against the top 3 array and if its score is higher
-        // we swap them and push the smaller word down the list
         WordFreq temp = {word, freq};
         for (int j = 0; j < 3; j++) {
             if (temp.freq > curr->top3[j].freq) {
@@ -48,8 +52,6 @@ void insert(Node* root, string word, long long freq) {
     }
 }
 
-// standard trie search. just loops through the prefix letters
-// if we hit a dead end we return null otherwise return the node we stopped at
 Node* search(Node* root, string prefix) {
     Node* curr = root;
     for (char c : prefix) {
@@ -62,16 +64,12 @@ Node* search(Node* root, string prefix) {
     return curr;
 }
 
-// reads the words from our text file
-// since the file is already sorted i just simulate the frequencies starting from 20000 
-// and going down so the first words read stay at the top of the rankings
 void loadTxt(Node* root, string filename) {
     ifstream file(filename);
     if (!file.is_open()) {
         cout << "error: could not open " << filename << endl;
         return;
     }
-
     string word;
     long long simulatedFreq = 20000; 
     while (file >> word) {
@@ -81,15 +79,30 @@ void loadTxt(Node* root, string filename) {
     file.close();
 }
 
-// i figured out this hack to get real time typing without pressing enter
-// it uses system() to quickly turn off canonical mode and echo in the mac terminal
-// grabs exactly one character and then turns them back on immediately
 char getKeystroke() {
-    char c;
-    system("stty -icanon -echo"); 
-    c = getchar();                
-    system("stty icanon echo");   
+#ifdef _WIN32
+    return (char)_getch();
+#else
+    // Switch terminal to raw mode so each keypress arrives immediately,
+    // without waiting for Enter. Restore original settings after reading.
+    struct termios oldt, newt;
+    tcgetattr(STDIN_FILENO, &oldt);
+    newt = oldt;
+    newt.c_lflag &= ~(ICANON | ECHO);
+    tcsetattr(STDIN_FILENO, TCSANOW, &newt);
+    char c = getchar();
+    tcsetattr(STDIN_FILENO, TCSANOW, &oldt);
     return c;
+#endif
+}
+
+void clearScreen() {
+#ifdef _WIN32
+    system("cls");
+#else
+    // ANSI escape sequence — clears screen directly, no shell process spawned
+    cout << "\033[2J\033[H";
+#endif
 }
 
 int main() {
@@ -100,10 +113,8 @@ int main() {
     
     string prefix = "";
     
-    // infinite loop for the real time search bar
     while (true) {
-        // clear the mac terminal screen every time so it looks like a clean ui
-        system("clear");
+        clearScreen();
         
         cout << "---------------------------------" << endl;
         cout << "       OptiType Engine           " << endl;
@@ -112,19 +123,15 @@ int main() {
         
         cout << "Search: " << prefix << "\n\n";
         
-        // move result up here so we can read the words later when the user presses 1, 2, or 3
         Node* result = nullptr;
         
-        // we only want to bother searching if the user actually typed something
         if (prefix.length() > 0) {
             result = search(root, prefix);
             
-            // if we got null or the first top3 slot is empty then we have nothing
             if (result == nullptr || result->top3[0].freq == 0) {
                 cout << "Suggestions:\n  no suggestions found" << endl;
             } else {
                 cout << "Suggestions:" << endl;
-                // loop through our cached array and print the words
                 for (int i = 0; i < 3; i++) {
                     if (result->top3[i].freq > 0) {
                         cout << "  " << i + 1 << ". " << result->top3[i].word << endl;
@@ -133,33 +140,27 @@ int main() {
             }
         }
         
-        // wait for the user to hit a key
         char c = getKeystroke();
         
         if (c == '?') {
             break; 
         } else if (c == '-' || c == 127) { 
-            // 127 is the ascii code for the mac backspace key
             if (prefix.length() > 0) {
                 prefix.pop_back(); 
             }
         } else if (c >= '1' && c <= '3') {
-            // NEW FEATURE: autocomplete if they press 1, 2, or 3!
-            // subtract the character '1' to convert it to an array index (0, 1, or 2)
             int index = c - '1'; 
-            
-            // make sure we actually have a suggestion at that number before replacing
             if (result != nullptr && result->top3[index].freq > 0) {
                 prefix = result->top3[index].word; 
             }
         } else if (isalpha(c)) {
-            // append the new letter to the prefix
             prefix += c; 
         }
     }
     
-    // clear screen one last time before exiting so the terminal is clean
-    system("clear");
+    clearScreen();
     cout << "exiting program..." << endl;
+
+    delete root; // destructor recursively frees all nodes. Memory: managed.
     return 0;
 }
